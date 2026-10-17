@@ -8,6 +8,12 @@ a scratchpad for agents to create, read, modify, and organize files during execu
 
 give agents a filesystem to think, work, and manage intermediate artifacts.
 
+## Goals
+1. able to read files from memory
+2. play media files 
+3. run programs 
+4. WAL
+
 ## status
 
 work in progress.

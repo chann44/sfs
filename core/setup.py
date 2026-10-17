@@ -9,6 +9,8 @@ FILE_IDENTIFIER= "__FILE__"
 DIR_EMOJI = "📂"
 FILE_EMOJI = "📃"
 
+CURSOR = "root"
+
 
 FILE_SYSTEM = {
     "root": {
@@ -41,6 +43,11 @@ def construct_paths(filesystem:any, indent=0, path=""):
     elif isinstance(filesystem, list):
         for value in filesystem:
             construct_paths(value, indent=indent+2, path=path)
+
+def show_file(cursor: str, data: any):
+    pass
+
+
     
             
 
