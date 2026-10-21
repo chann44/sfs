@@ -60,6 +60,28 @@
 - **deterministic testing** — quota caps, text-only enforcement, and error-as-data make file-logic tests reproducible
 - **safe playground** — a fake filesystem you can `rm -rf` all day; nothing on the host can break
 
+## benchmark
+
+```sh
+python3 benchmark.py
+```
+
+500 small text files per round (agent-scratchpad shape), best of 3, apple m4, python 3.12:
+
+| op | size | real fs | sfs | sfs+wal | agent surface |
+|---|---|---|---|---|---|
+| write | 256b | 19,459 ops/s | **153,559** | 33,970 | 143,659 |
+| write | 4kb | 17,433 | **92,060** | 18,085 | 88,220 |
+| read | 256b | 72,021 | **1,189,414** | 1,271,188 | 789,214 |
+| read | 4kb | 67,362 | **1,182,732** | 1,141,553 | 349,091 |
+| overwrite | 4kb | 26,513 | **63,360** | 14,081 | 62,696 |
+| grep 500 files | 4kb | 64,518 | **250,789** | 247,965 | 249,340 |
+
+takeaways:
+- in-memory sfs is **5–9x faster than the real fs on writes** and **17x on reads** (5–11x through the agent surface, which pays for decode + result objects)
+- `sfs+wal` lands at real-fs speed — durability costs one json append per op either way, and it's still faster than apfs at small sizes
+- the total-quota check walks all files per write, which is why overwrites trail fresh writes as the tree grows — fine at scratchpad scale, the knob to turn if it ever isn't
+
 ## motivation
 
 give agents a filesystem to think, work, and manage intermediate artifacts.
