@@ -11,84 +11,107 @@ FILE_EMOJI = "📃"
 root = "root"
 
 # CURSOR = "root"
+# path: raw bytes
 
 
+class Filesystem:
+    def __init__(self, root_name="root"):
+        self.root_name = root_name
+        self.paths = {root_name: {}}
+        self.contents = {}
+        self.cwd = f"/{root_name}"
 
-FILE_SYSTEM = {
-    "root": {
-        "home": [
-          {
-              "documnet.txt": FILE_IDENTIFIER,
-              "dir": [
-                  {
-                      "hey": FILE_IDENTIFIER,
-                      "hello": FILE_IDENTIFIER
-                  }
-              ]
-          }  
-        ],
-        "usr": [
-            {"notes.txt": FILE_IDENTIFIER}
-        ]
-    }
-}
+    def pwd(self):
+        return self.cwd
 
-current_file_system = {}
+    def exists(self, path):
+        return self._node(path) is not None
 
-def construct_paths(filesystem:any, indent=0, path=""):
-    spacing = " " * indent
-    if isinstance(filesystem, dict):
+    def ls(self, path=None):
+        node = self._node(path)
+        if node is None:
+            raise FileNotFoundError(f"no such path: {path or self.cwd}")
+        if not isinstance(node, dict):
+            raise NotADirectoryError(f"not a directory: {path}")
+        return list(node.keys())
 
-        for key, value in filesystem.items():
-            new_path = f"{path}/{key}" if path else key
+    def cd(self, path):
+        resolved = self._resolve(path)
+        node = self._node(resolved)
+        if node is None:
+            raise FileNotFoundError(f"no such directory: {path}")
+        if not isinstance(node, dict):
+            raise NotADirectoryError(f"not a directory: {path}")
+        self.cwd = resolved
+        return self.cwd
 
-            if isinstance(value, (dict, list)):
-                print(f"{spacing}{DIR_EMOJI} {key}")
-                new_path = f"{path}/{key}"
-                construct_paths(value, indent=indent+2, path=new_path)
+    def mkdir(self, path):
+        resolved = self._resolve(path)
+        if resolved == f"/{self.root_name}":
+            raise FileExistsError(f"already exists: {path}")
+        parent, name = self._split(resolved)
+        node = self._node(parent)
+        if node is None or not isinstance(node, dict):
+            raise FileNotFoundError(f"missing parent: {path}")
+        if name in node:
+            raise FileExistsError(f"already exists: {path}")
+        node[name] = {}
+        return resolved
+
+    def mkdirs(self, path):
+        resolved = self._resolve(path)
+        node = self.paths
+        for part in resolved.strip("/").split("/"):
+            if part not in node:
+                node[part] = {}
+            elif not isinstance(node[part], dict):
+                raise NotADirectoryError(f"not a directory: {part}")
+            node = node[part]
+        return resolved
+
+    def touch(self, path, content=b""):
+        resolved = self._resolve(path)
+        if self._node(resolved) is not None:
+            raise FileExistsError(f"already exists: {path}")
+        parent, name = self._split(resolved)
+        node = self._node(parent)
+        if node is None or not isinstance(node, dict):
+            raise FileNotFoundError(f"missing parent: {path}")
+        node[name] = FILE_IDENTIFIER
+        self.contents[resolved] = content
+        return resolved
+
+    def _resolve(self, path=None):
+        if path is None:
+            return self.cwd
+        if path.startswith("/"):
+            parts = [p for p in path.split("/") if p]
+            if not parts or parts[0] != self.root_name:
+                parts.insert(0, self.root_name)
+            stack = []
+        else:
+            stack = [p for p in self.cwd.split("/") if p]
+            parts = [p for p in path.split("/") if p]
+        for part in parts:
+            if part == ".":
+                continue
+            if part == "..":
+                if len(stack) > 1:
+                    stack.pop()
             else:
-                print(f"{spacing}{FILE_EMOJI} {key} {value}")
-    elif isinstance(filesystem, list):
-        for value in filesystem:
-            construct_paths(value, indent=indent+2, path=path)
-def show_dir(cursor: str, filesystem: any, path=""):
-        if isinstance(filesystem, dict):
-            for key, value in filesystem.items():
-                new_path = f"{path}/{key}" if path else key
+                stack.append(part)
+        return "/" + "/".join(stack)
 
-                if isinstance(value, (dict, list)):
-                    if key == cursor:
-                        current_file_system[key] = value # type: ignore
-                    new_path = f"{path}/{key}"
-                    show_dir(cursor,value, path=new_path)
-                    # print(f"{spacing}{FILE_EMOJI} {key} {value}")
-        elif isinstance(filesystem, list):
-            for value in filesystem:
-                show_dir(cursor,value, path=path)
+    def _node(self, path):
+        node = self.paths
+        for part in self._resolve(path).strip("/").split("/"):
+            if not isinstance(node, dict) or part not in node:
+                return None
+            node = node[part]
+        return node
 
-
-def change_dir(filesystem:any, cursor:str, indent:int=2, path=""):
-    spacing = " " * indent
-    if isinstance(filesystem, dict):
-
-        for key, value in filesystem.items():
-            print(key, value)
-            new_path = f"{path}/{key}" if path else key
-
-            if isinstance(value, (dict, list)):
-                if key == cursor:
-                    print(f"{spacing}{DIR_EMOJI} {key}")
-                new_path = f"{path}/{key}"
-                change_dir(value, indent=indent+2, path=new_path, cursor=cursor)
-                # print(f"{spacing}{FILE_EMOJI} {key} {value}")
-    elif isinstance(filesystem, list):
-        for value in filesystem:
-            change_dir(value, indent=indent+2, path=path, cursor=cursor)
-
-
-    
-            
-
-show_dir(filesystem=FILE_SYSTEM, cursor="home")
-construct_paths(current_file_system)
+    @staticmethod
+    def _split(resolved):
+        parent, _, name = resolved.strip("/").rpartition("/")
+        return f"/{parent}" if parent else "/", name
 
