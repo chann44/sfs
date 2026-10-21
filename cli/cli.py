@@ -1,7 +1,11 @@
 import argparse
+import json
+import os
 import shlex
 
+from core.persist import Wal
 from core.setup import DIR_EMOJI, FILE_EMOJI, Filesystem
+from tools.openai import to_openai
 
 
 ## commands
@@ -28,6 +32,10 @@ class Cli:
 
 	def run(self, argv=None):
 		args = self.parser.parse_args(argv)
+		if args.command != "init" and os.path.exists(args.wal):
+			wal = Wal(args.wal)
+			self.fs = Filesystem(journal=wal)
+			wal.load(self.fs)
 		if args.command is None:
 			self.show_tree()
 			print("sfs: no command given, try 'shell' or -h")
@@ -36,7 +44,7 @@ class Cli:
 			return self.shell()
 		try:
 			self.execute(args)
-		except OSError as e:
+		except (OSError, ValueError) as e:
 			print(f"sfs: {e}")
 			return 1
 		return 0
@@ -62,25 +70,35 @@ class Cli:
 				self.execute(args)
 			except SystemExit:
 				pass
-			except OSError as e:
+			except (OSError, ValueError) as e:
 				print(f"sfs: {e}")
 
 	def cd(self, path):
 		try:
 			self.fs.cd(path)
-		except OSError as e:
+		except (OSError, ValueError) as e:
 			print(f"sfs: {e}")
+
+	def _init_fs(self, args):
+		self.user = args.user
+		self.permissions = args.permissions
+		self.fs = Filesystem(
+			root_name=args.root,
+			max_file_bytes=args.file_cap,
+			max_total_bytes=args.total_cap,
+		)
+		wal = Wal(args.wal)
+		wal.write_config(self.fs)
+		self.fs.journal = wal
+		self.fs.mkdirs(f"home/{args.user}")
+		self.fs.mkdir("usr")
+		self.fs.touch(f"home/{args.user}/readme.txt", f"welcome {args.user}\n".encode())
+		print(f"initialized /{args.root} for {args.user} (permissions: {self.permissions}, wal: {args.wal})")
+		self.show_tree()
 
 	def execute(self, args):
 		if args.command == "init":
-			self.user = args.user
-			self.permissions = args.permissions
-			self.fs = Filesystem(root_name=args.root)
-			self.fs.mkdirs(f"home/{args.user}")
-			self.fs.mkdir("usr")
-			self.fs.touch(f"home/{args.user}/readme.txt", f"welcome {args.user}\n".encode())
-			print(f"initialized /{args.root} for {args.user} (permissions: {self.permissions})")
-			self.show_tree()
+			self._init_fs(args)
 		elif args.command == "ls":
 			self._check("r")
 			base = self.fs.resolve(args.path)
@@ -107,6 +125,8 @@ class Cli:
 		elif args.command == "tree":
 			self._check("r")
 			self.show_tree()
+		elif args.command == "tools":
+			print(json.dumps(to_openai(), indent=2))
 
 	def show_tree(self, structure=None, indent=0):
 		if structure is None:
@@ -120,11 +140,14 @@ class Cli:
 
 	def _build_parser(self):
 		parser = argparse.ArgumentParser(prog="sfs", description="sfs - tiny fake filesystem")
+		parser.add_argument("--wal", default="sfs.wal", help="write-ahead log path")
 		sub = parser.add_subparsers(dest="command")
 		init = sub.add_parser("init", help="initialize with a user, permissions and a root")
 		init.add_argument("user")
 		init.add_argument("--permissions", default="rw")
 		init.add_argument("--root", default="root")
+		init.add_argument("--file-cap", type=int, default=4096, help="max bytes per file")
+		init.add_argument("--total-cap", type=int, default=1048576, help="max bytes across all files")
 		ls = sub.add_parser("ls", help="list a directory")
 		ls.add_argument("path", nargs="?", default=None)
 		mkdir = sub.add_parser("mkdir", help="create a directory")
@@ -140,6 +163,7 @@ class Cli:
 		write.add_argument("-p", "--parents", action="store_true")
 		sub.add_parser("pwd", help="print working directory")
 		sub.add_parser("tree", help="show the whole filesystem")
+		sub.add_parser("tools", help="print agent tool definitions as JSON")
 		sub.add_parser("shell", help="interactive shell")
 		return parser
 

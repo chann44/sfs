@@ -13,15 +13,23 @@ root = "root"
 # CURSOR = "root"
 # path: raw bytes
 
+import base64
 import fnmatch
 
 
 class Filesystem:
-    def __init__(self, root_name="root"):
+    def __init__(self, root_name="root", max_file_bytes=4096, max_total_bytes=1048576, journal=None):
         self.root_name = root_name
+        self.max_file_bytes = max_file_bytes
+        self.max_total_bytes = max_total_bytes
+        self.journal = journal
         self.paths = {root_name: {}}
         self.contents = {}
         self.cwd = f"/{root_name}"
+
+    @property
+    def used_bytes(self):
+        return sum(len(data) for data in self.contents.values())
 
     def pwd(self):
         return self.cwd
@@ -58,6 +66,7 @@ class Filesystem:
         if name in node:
             raise FileExistsError(f"already exists: {path}")
         node[name] = {}
+        self._record("mkdir", path=resolved)
         return resolved
 
     def mkdirs(self, path):
@@ -69,10 +78,15 @@ class Filesystem:
             elif not isinstance(node[part], dict):
                 raise NotADirectoryError(f"not a directory: {part}")
             node = node[part]
+        self._record("mkdirs", path=resolved)
         return resolved
 
     def touch(self, path, content=b""):
+        if isinstance(content, str):
+            content = content.encode()
+        self._validate_text(content)
         resolved = self._resolve(path)
+        self._check_quota(resolved, content)
         if self._node(resolved) is not None:
             raise FileExistsError(f"already exists: {path}")
         parent, name = self._split(resolved)
@@ -81,6 +95,7 @@ class Filesystem:
             raise FileNotFoundError(f"missing parent: {path}")
         node[name] = FILE_IDENTIFIER
         self.contents[resolved] = content
+        self._record("touch", path=resolved, content=content.decode())
         return resolved
 
     def read(self, path):
@@ -95,7 +110,9 @@ class Filesystem:
     def write(self, path, content=b"", parents=False):
         if isinstance(content, str):
             content = content.encode()
+        self._validate_text(content)
         resolved = self._resolve(path)
+        self._check_quota(resolved, content)
         node = self._node(resolved)
         if node is None:
             parent, name = self._split(resolved)
@@ -110,6 +127,7 @@ class Filesystem:
         elif not isinstance(node, str):
             raise IsADirectoryError(f"is a directory: {path}")
         self.contents[resolved] = content
+        self._record("write", path=resolved, content=content.decode(), parents=parents)
         return resolved
 
     def is_dir(self, path):
@@ -120,6 +138,25 @@ class Filesystem:
 
     def resolve(self, path=None):
         return self._resolve(path)
+
+    def _record(self, op, **args):
+        if self.journal is not None:
+            self.journal.record(op, **args)
+
+    def _validate_text(self, content):
+        if b"\x00" in content:
+            raise ValueError("binary content not allowed: files must be utf-8 text")
+        try:
+            content.decode("utf-8")
+        except UnicodeDecodeError as e:
+            raise ValueError("binary content not allowed: files must be utf-8 text") from e
+
+    def _check_quota(self, resolved, content):
+        if len(content) > self.max_file_bytes:
+            raise ValueError(f"file exceeds cap: {len(content)} > {self.max_file_bytes} bytes")
+        projected = self.used_bytes - len(self.contents.get(resolved, b"")) + len(content)
+        if projected > self.max_total_bytes:
+            raise ValueError(f"total quota exceeded: {projected} > {self.max_total_bytes} bytes")
 
     def edit(self, path, old_string, new_string, replace_all=False):
         if not old_string:
@@ -150,6 +187,7 @@ class Filesystem:
         del self._node(parent)[name]
         for key in [k for k in self.contents if k == resolved or k.startswith(resolved + "/")]:
             del self.contents[key]
+        self._record("delete", path=resolved, recursive=recursive)
         return resolved
 
     def glob(self, pattern, path=None):

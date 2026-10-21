@@ -80,7 +80,7 @@ class AgentFilesystem:
 
     def write(self, file_path, content):
         try:
-            resolved = self.fs.write(file_path, content)
+            resolved = self.fs.write(file_path, content, parents=True)
         except (OSError, ValueError) as e:
             return WriteResult(error=str(e))
         return WriteResult(path=resolved, bytes_written=len(content.encode()))
