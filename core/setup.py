@@ -95,7 +95,7 @@ class Filesystem:
             raise FileNotFoundError(f"missing parent: {path}")
         node[name] = FILE_IDENTIFIER
         self.contents[resolved] = content
-        self._record("touch", path=resolved, content=content.decode())
+        self._record("touch", path=resolved, content_b64=base64.b64encode(content).decode("ascii"))
         return resolved
 
     def read(self, path):
@@ -127,7 +127,7 @@ class Filesystem:
         elif not isinstance(node, str):
             raise IsADirectoryError(f"is a directory: {path}")
         self.contents[resolved] = content
-        self._record("write", path=resolved, content=content.decode(), parents=parents)
+        self._record("write", path=resolved, content_b64=base64.b64encode(content).decode("ascii"), parents=parents)
         return resolved
 
     def is_dir(self, path):

@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 
@@ -41,7 +42,10 @@ class Wal:
 					fs.max_file_bytes = args["max_file_bytes"]
 					fs.max_total_bytes = args["max_total_bytes"]
 					fs.paths = args["paths"]
-					fs.contents = {p: c.encode() for p, c in args["contents"].items()}
+					if args.get("contents_encoding") == "base64":
+						fs.contents = {p: base64.b64decode(c) for p, c in args["contents"].items()}
+					else:
+						fs.contents = {p: c.encode() for p, c in args["contents"].items()}
 					fs.cwd = f"/{fs.root_name}"
 				elif op == "config":
 					fs.root_name = args["root_name"]
@@ -51,6 +55,8 @@ class Wal:
 					fs.contents = {}
 					fs.cwd = f"/{fs.root_name}"
 				elif op in WAL_OPS:
+					if op in ("write", "touch") and "content_b64" in args:
+						args["content"] = base64.b64decode(args.pop("content_b64"))
 					getattr(fs, op)(**args)
 				else:
 					raise ValueError(f"unknown wal op at line {number}: {op}")
@@ -83,7 +89,8 @@ class Wal:
 				"max_file_bytes": fs.max_file_bytes,
 				"max_total_bytes": fs.max_total_bytes,
 				"paths": fs.paths,
-				"contents": {p: c.decode() for p, c in fs.contents.items()},
+				"contents": {p: base64.b64encode(c).decode("ascii") for p, c in fs.contents.items()},
+				"contents_encoding": "base64",
 			},
 		}
 		tmp = f"{self.wal_path}.tmp"

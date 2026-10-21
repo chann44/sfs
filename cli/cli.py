@@ -3,8 +3,10 @@ import json
 import os
 import shlex
 
+from core.agent import AgentFilesystem
 from core.persist import Wal
 from core.setup import DIR_EMOJI, FILE_EMOJI, Filesystem
+from tools.mcp import serve as serve_mcp
 from tools.openai import to_openai
 
 
@@ -32,6 +34,12 @@ class Cli:
 
 	def run(self, argv=None):
 		args = self.parser.parse_args(argv)
+		if args.mcp:
+			wal = Wal(args.wal)
+			fs = Filesystem(journal=wal)
+			wal.load(fs)
+			serve_mcp(AgentFilesystem(fs))
+			return 0
 		if args.command != "init" and os.path.exists(args.wal):
 			wal = Wal(args.wal)
 			self.fs = Filesystem(journal=wal)
@@ -141,6 +149,7 @@ class Cli:
 	def _build_parser(self):
 		parser = argparse.ArgumentParser(prog="sfs", description="sfs - tiny fake filesystem")
 		parser.add_argument("--wal", default="sfs.wal", help="write-ahead log path")
+		parser.add_argument("--mcp", action="store_true", help="run as an MCP server on stdio")
 		sub = parser.add_subparsers(dest="command")
 		init = sub.add_parser("init", help="initialize with a user, permissions and a root")
 		init.add_argument("user")
