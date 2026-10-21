@@ -27,6 +27,8 @@ sfs --mcp           # run as an mcp server
 ./install.sh -u     # remove
 ```
 
+agents: grab [`SKILL.md`](SKILL.md) to teach your agent when and how to use sfs as a scratchpad.
+
 ## demo
 
 ![demo](assets/demo.gif)
