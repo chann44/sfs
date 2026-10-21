@@ -10,6 +10,23 @@
   A scratchpad for agents to create, read, modify, and organize files during execution without touching the host filesystem.
 </p>
 
+## install
+
+```sh
+git clone git@github.com:chann44/sfs.git && cd sfs
+chmod +x install.sh
+./install.sh
+```
+
+installs to `~/.local/share/sfs` and puts an `sfs` command on `~/.local/bin` (override with `SFS_INSTALL_DIR` / `SFS_BIN_DIR`). zero dependencies — just python ≥ 3.12.
+
+```sh
+sfs init you        # start a filesystem
+sfs shell           # interactive
+sfs --mcp           # run as an mcp server
+./install.sh -u     # remove
+```
+
 ## demo
 
 ![demo](assets/demo.gif)
