@@ -1,6 +1,13 @@
+import sys
+
+from cli.cli import Cli
+from core.setup import Filesystem
+
+
 def main():
-    print("Hello from sfs!")
+	cli = Cli(filesystem=Filesystem())
+	return cli.run()
 
 
 if __name__ == "__main__":
-    main()
+	sys.exit(main())

@@ -81,6 +81,44 @@ class Filesystem:
         self.contents[resolved] = content
         return resolved
 
+    def read(self, path):
+        resolved = self._resolve(path)
+        node = self._node(resolved)
+        if node is None:
+            raise FileNotFoundError(f"no such file: {path}")
+        if not isinstance(node, str):
+            raise IsADirectoryError(f"is a directory: {path}")
+        return self.contents.get(resolved, b"")
+
+    def write(self, path, content=b"", parents=False):
+        if isinstance(content, str):
+            content = content.encode()
+        resolved = self._resolve(path)
+        node = self._node(resolved)
+        if node is None:
+            parent, name = self._split(resolved)
+            if parents and self._node(parent) is None:
+                self.mkdirs(parent)
+            pnode = self._node(parent)
+            if pnode is None:
+                raise FileNotFoundError(f"missing parent: {path}")
+            if not isinstance(pnode, dict):
+                raise NotADirectoryError(f"not a directory: {path}")
+            pnode[name] = FILE_IDENTIFIER
+        elif not isinstance(node, str):
+            raise IsADirectoryError(f"is a directory: {path}")
+        self.contents[resolved] = content
+        return resolved
+
+    def is_dir(self, path):
+        return isinstance(self._node(path), dict)
+
+    def is_file(self, path):
+        return self._node(path) == FILE_IDENTIFIER
+
+    def resolve(self, path=None):
+        return self._resolve(path)
+
     def _resolve(self, path=None):
         if path is None:
             return self.cwd
