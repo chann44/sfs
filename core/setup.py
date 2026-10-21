@@ -13,6 +13,8 @@ root = "root"
 # CURSOR = "root"
 # path: raw bytes
 
+import fnmatch
+
 
 class Filesystem:
     def __init__(self, root_name="root"):
@@ -118,6 +120,76 @@ class Filesystem:
 
     def resolve(self, path=None):
         return self._resolve(path)
+
+    def edit(self, path, old_string, new_string, replace_all=False):
+        if not old_string:
+            raise ValueError("old_string is empty")
+        text = self.read(path).decode()
+        count = text.count(old_string)
+        if count == 0:
+            raise ValueError(f"old_string not found in {path}")
+        if count > 1 and not replace_all:
+            raise ValueError(f"old_string matches {count} times in {path}, pass replace_all=True")
+        if replace_all:
+            text = text.replace(old_string, new_string)
+        else:
+            text = text.replace(old_string, new_string, 1)
+        self.write(path, text.encode())
+        return self._resolve(path)
+
+    def delete(self, path, recursive=True):
+        resolved = self._resolve(path)
+        if resolved == f"/{self.root_name}":
+            raise PermissionError("cannot delete root")
+        node = self._node(resolved)
+        if node is None:
+            raise FileNotFoundError(f"no such path: {path}")
+        if isinstance(node, dict) and node and not recursive:
+            raise OSError(f"directory not empty: {path}")
+        parent, name = self._split(resolved)
+        del self._node(parent)[name]
+        for key in [k for k in self.contents if k == resolved or k.startswith(resolved + "/")]:
+            del self.contents[key]
+        return resolved
+
+    def glob(self, pattern, path=None):
+        base = self._resolve(path)
+        prefix = base.strip("/")
+        matches = []
+        for full in self._walk(base):
+            rel = full.strip("/")[len(prefix):].strip("/")
+            if fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(rel.rsplit("/", 1)[-1], pattern):
+                matches.append(full)
+        return sorted(matches)
+
+    def grep(self, pattern, path=None, glob=None):
+        base = self._resolve(path)
+        matches = []
+        for full in self._walk(base):
+            if not self.is_file(full):
+                continue
+            if glob and not (fnmatch.fnmatch(full, glob) or fnmatch.fnmatch(full.rsplit("/", 1)[-1], glob)):
+                continue
+            for number, line in enumerate(self.read(full).decode(errors="replace").splitlines(), 1):
+                if pattern in line:
+                    matches.append((full, number, line))
+        return sorted(matches)
+
+    def _walk(self, base):
+        node = self._node(base)
+        if node is None:
+            raise FileNotFoundError(f"no such path: {base}")
+        if isinstance(node, str):
+            yield base
+            return
+        stack = [(base, node)]
+        while stack:
+            path, current = stack.pop()
+            for name, value in current.items():
+                child = f"{path}/{name}"
+                yield child
+                if isinstance(value, dict):
+                    stack.append((child, value))
 
     def _resolve(self, path=None):
         if path is None:
